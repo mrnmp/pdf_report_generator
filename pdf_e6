@@ -1,0 +1,178 @@
+#!/usr/bin/python
+#-----!/usr/local/bin/python
+from decimal import Decimal
+from lxml import etree, objectify
+import sys
+ 
+from reportlab.lib.testutils import setOutDir,makeSuiteForClasses, outputfile, printLocation
+setOutDir(__name__)
+import os,unittest
+from reportlab.platypus.tables import GRID_STYLE, BOX_STYLE, LABELED_GRID_STYLE, COLORED_GRID_STYLE, LIST_STYLE, LongTable
+from reportlab.platypus.flowables import Image, PageBreak, Spacer, XBox
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+
+from reportlab.lib import colors
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.lib.units import  mm, cm, inch
+from reportlab.pdfgen import canvas
+from reportlab.platypus import Paragraph, Table, TableStyle 
+from reportlab.platypus.flowables import PageBreak
+from reportlab.lib.pagesizes import A3, A4, landscape, portrait
+from reportlab.platypus.doctemplate import SimpleDocTemplate
+from reportlab.graphics import shapes
+from reportlab.graphics.shapes import Drawing
+from reportlab.graphics.shapes import Rect
+
+styleSheet = getSampleStyleSheet()
+ 
+########################################################################
+
+class ModifyCanvas(canvas.Canvas):
+    def __init__(self, *args, **kwargs):
+        canvas.Canvas.__init__(self, *args, **kwargs)
+        self._codes = []
+    def showPage(self):
+        self._codes.append({'code': self._code, 'stack': self._codeStack})
+        self._startPage()
+    def coord(self, x, y, unit=1):
+    	x, y = x * unit, self.height -  y * unit
+    	return x, y
+
+
+    def save(self):
+        """add page info to each page (page x of y)"""
+        # reset page counter 
+        data = []
+        self.width = 2
+        self.height = 2
+        for code in self._codes:
+            # recall saved page
+            self._code = code['code']
+            self._codeStack = code['stack']
+            self.setFillColorRGB(0,0,255)
+            #self.setFont("Times-Bold", 8)
+            self.setFont("Helvetica-Bold", 8)
+	    #self.add(Rect(15,200, 5,5, fillColor=colors.white))
+            self.setStrokeColorRGB(0,0,255,0.1)
+            self.line(38, 520, 806, 520)
+            self.line(38, 520, 38, 482)
+            self.line(806, 520, 806, 482)
+            self.line(38, 482, 806, 482)
+          
+	    self.drawString(15*mm, 175*mm, "ItemTime    Field Eng  Location               Circuit/Details                                                                                                  Action                         NLS_jd_ops_head_remarks")
+            canvas.Canvas.showPage(self)
+        self._doc.SaveToFile(self._filename, self)
+
+
+
+########################################################################
+class PDFOrder(object):
+ 
+    #----------------------------------------------------------------------
+    def __init__(self, xml_file, pdf_file):
+        self.xml_file = xml_file
+        self.pdf_file = pdf_file
+ 
+        self.xml_obj = self.getXMLObject()
+ 
+    #----------------------------------------------------------------------
+    def coord(self, x, y, unit=1):
+        x, y = x * unit, self.height -  y * unit
+        print "x, y, height ==== %s, %s, %s" % (x, y, self.height)
+        return x, y  
+ 
+    #----------------------------------------------------------------------
+    def createPDF(self):
+
+        doc = SimpleDocTemplate("output.pdf", pagesize=landscape(A4),leftMargin=32, topMargin=107,bottomMargin=60 )
+
+
+        xml = self.xml_obj
+        lst = []
+
+
+        data = []
+        head = []
+        h2 = []
+        d = Drawing(10, 10 )
+	d.add(Rect(-5,5, 5,5, fillColor=colors.white))
+
+
+        self.line_num = 1
+        row_num = 1
+
+        for op in xml.operations.iterchildren():
+
+            row = []
+            rn = '<font size=8 fontName=Helvetica ><b>%s</b></font>' % row_num
+            row.append(Paragraph(rn , styleSheet["BodyText"]))
+
+            row.append(d)
+
+
+            loc = op.attrib['location_name']
+            loc = '<font size=8 fontName=Helvetica >%s</font>' % loc
+            row.append(Paragraph(loc , styleSheet["BodyText"]))
+
+            cir = op.attrib['circuit_details']
+            cir = '<font size=8 fontName=Helvetica >%s</font>' % cir
+            row.append(Paragraph(cir , styleSheet["BodyText"]))
+
+            act = op.attrib['action']
+            act = '<font size=8 fontName=Helvetica >%s</font>' % act
+            row.append(Paragraph(act , styleSheet["BodyText"]))
+
+            rem = op.attrib['remarks']
+            rem = '<font size=8 fontName=Helvetica >%s</font>' % rem
+            row.append(Paragraph(rem , styleSheet["BodyText"]))
+
+
+            data.append(row)
+            row_num += 1
+
+
+	sty = TableStyle(
+	[
+	('LINEABOVE', (0,1), (-1,-1), 0.25, colors.lightblue),
+        ('BOX',(0,0),(-1,-1),0.50,colors.lightblue),
+	('ALIGN', (1,1), (-1,-1), 'RIGHT'), 
+	('FONT', (0,0), (-1,0), 'Times-Roman', 8, 8)
+	])
+	t=Table(data, style=sty, colWidths = [1.5 * cm, 1.5 * cm, 2.05 * cm, 10 * cm, 2.05 * cm, 10 * cm], hAlign='LEFT')
+
+
+	lst.append(t)
+        lst.append(Spacer(0,12))
+        doc.build(lst, canvasmaker=ModifyCanvas)
+
+
+
+ 
+    #----------------------------------------------------------------------
+
+    def getXMLObject(self):
+        """
+        Open the XML document and return an lxml XML document
+        """
+        with open(self.xml_file) as f:
+            xml = f.read()
+        return objectify.fromstring(xml)
+ 
+    #----------------------------------------------------------------------
+    def savePDF(self):
+        """
+        Save the PDF to disk
+        """
+        self.canvas.save()
+    #----------------------------------------------------------------------
+ 
+#----------------------------------------------------------------------
+if __name__ == "__main__":
+    filename = str(sys.argv[1])
+    
+    xml = filename
+    pdf = "output1.pdf"
+    doc = PDFOrder(xml, pdf)
+    doc.createPDF()
+    #doc.savePDF()
